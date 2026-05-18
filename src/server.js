@@ -17,6 +17,7 @@ const app = express();
 const port = Number(process.env.PORT || 3000);
 const baseUrl = process.env.BASE_URL || `http://localhost:${port}`;
 const isProduction = process.env.NODE_ENV === 'production';
+const appPassword = process.env.APP_PASSWORD || '12345';
 const anthropic = process.env.CLAUDE_API_KEY
   ? new Anthropic({ apiKey: process.env.CLAUDE_API_KEY })
   : null;
@@ -52,19 +53,41 @@ function requireUser(req, res, next) {
   next();
 }
 
+function requirePassword(req, res, next) {
+  if (!req.session.passwordVerified) {
+    res.status(403).json({ error: 'Password required.' });
+    return;
+  }
+
+  next();
+}
+
 app.get('/health', (_req, res) => {
   res.json({ ok: true });
 });
 
 app.get('/api/session', (req, res) => {
   res.json({
+    passwordVerified: Boolean(req.session.passwordVerified),
     authenticated: Boolean(req.session.user),
     user: req.session.user || null,
     claudeReady: Boolean(anthropic)
   });
 });
 
-app.get('/auth/github', (req, res) => {
+app.post('/auth/password', (req, res) => {
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+
+  if (password !== appPassword) {
+    res.status(401).json({ error: 'Wrong password.' });
+    return;
+  }
+
+  req.session.passwordVerified = true;
+  res.json({ ok: true });
+});
+
+app.get('/auth/github', requirePassword, (req, res) => {
   if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
     res.status(500).send('GitHub OAuth is not configured. Fill in .env first.');
     return;
@@ -149,7 +172,7 @@ app.post('/auth/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/chat', requireUser, async (req, res) => {
+app.post('/api/chat', requirePassword, requireUser, async (req, res) => {
   if (!anthropic) {
     res.status(500).json({
       error: 'CLAUDE_API_KEY is missing. A custom app cannot use your Claude Pro web subscription directly.'

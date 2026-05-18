@@ -128,6 +128,20 @@
       .hidden {
         display: none;
       }
+
+      .stack {
+        display: grid;
+        gap: 12px;
+      }
+
+      input[type="password"] {
+        width: 100%;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        padding: 16px;
+        background: rgba(255, 255, 255, 0.75);
+        font: inherit;
+      }
     </style>
   </head>
   <body>
@@ -138,6 +152,14 @@
         <p>
           Ez a projekt GitHub OAuth belépést ad a saját alkalmazásodhoz. A Claude-hívás a szerver oldalon fut.
         </p>
+        <div class="stack" id="password-panel">
+          <p class="muted">Első kapu: jelszó védelem</p>
+          <input id="password-input" type="password" placeholder="Jelszó">
+          <div class="row">
+            <button id="password-button">Belépés jelszóval</button>
+            <span class="muted" id="password-message"></span>
+          </div>
+        </div>
         <div class="row" id="auth-actions">
           <a href="/auth/github"><button>Belépés GitHubbal</button></a>
         </div>
@@ -166,6 +188,10 @@
       const authActions = document.getElementById('auth-actions');
       const userRow = document.getElementById('user-row');
       const claudeNote = document.getElementById('claude-note');
+      const passwordPanel = document.getElementById('password-panel');
+      const passwordInput = document.getElementById('password-input');
+      const passwordButton = document.getElementById('password-button');
+      const passwordMessage = document.getElementById('password-message');
       const output = document.getElementById('output');
       const promptInput = document.getElementById('prompt');
       const sendButton = document.getElementById('send-button');
@@ -175,7 +201,8 @@
         const response = await fetch('/api/session');
         const session = await response.json();
 
-        authActions.classList.toggle('hidden', session.authenticated);
+        passwordPanel.classList.toggle('hidden', session.passwordVerified);
+        authActions.classList.toggle('hidden', !session.passwordVerified || session.authenticated);
         userRow.classList.toggle('hidden', !session.authenticated);
 
         if (session.authenticated) {
@@ -191,6 +218,26 @@
           ? 'A Claude backend készen áll.'
           : 'A Claude API kulcs hiányzik. A saját app nem tudja közvetlenül használni a személyes Claude Pro webes előfizetést.';
       }
+
+      passwordButton.addEventListener('click', async () => {
+        passwordMessage.textContent = 'Ellenőrzés...';
+
+        const response = await fetch('/auth/password', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ password: passwordInput.value })
+        });
+
+        const data = await response.json();
+        passwordMessage.textContent = data.error || 'Rendben.';
+
+        if (response.ok) {
+          passwordInput.value = '';
+          await refreshSession();
+        }
+      });
 
       sendButton.addEventListener('click', async () => {
         output.textContent = 'Kérés folyamatban...';
