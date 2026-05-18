@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="hu">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CLO</title>
+    <style>
+      :root {
+        --bg: #f2efe8;
+        --panel: rgba(255, 252, 245, 0.9);
+        --ink: #201a17;
+        --muted: #6f655e;
+        --line: rgba(32, 26, 23, 0.12);
+        --accent: #0f766e;
+        --accent-strong: #115e59;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: Georgia, 'Times New Roman', serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, rgba(15, 118, 110, 0.2), transparent 35%),
+          radial-gradient(circle at bottom right, rgba(180, 83, 9, 0.18), transparent 30%),
+          var(--bg);
+        min-height: 100vh;
+      }
+
+      main {
+        width: min(920px, calc(100vw - 32px));
+        margin: 32px auto;
+        display: grid;
+        gap: 20px;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        padding: 24px;
+        backdrop-filter: blur(18px);
+        box-shadow: 0 16px 50px rgba(32, 26, 23, 0.08);
+      }
+
+      h1,
+      h2,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        font-size: clamp(2.5rem, 7vw, 5rem);
+        line-height: 0.95;
+        letter-spacing: -0.04em;
+        margin-bottom: 12px;
+      }
+
+      h2 {
+        font-size: 1.1rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        margin-bottom: 16px;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.7);
+      }
+
+      button,
+      textarea {
+        font: inherit;
+      }
+
+      button {
+        border: 0;
+        border-radius: 999px;
+        padding: 12px 18px;
+        cursor: pointer;
+        background: var(--accent);
+        color: white;
+      }
+
+      button.secondary {
+        background: transparent;
+        color: var(--ink);
+        border: 1px solid var(--line);
+      }
+
+      textarea {
+        width: 100%;
+        min-height: 140px;
+        resize: vertical;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        padding: 16px;
+        background: rgba(255, 255, 255, 0.75);
+      }
+
+      pre {
+        white-space: pre-wrap;
+        margin: 0;
+        font-family: Consolas, 'Courier New', monospace;
+        line-height: 1.5;
+      }
+
+      .hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="panel">
+        <p class="muted">GitHub login + Claude backend</p>
+        <h1>Egyszer belépsz, és innen használod.</h1>
+        <p>
+          Ez a projekt GitHub OAuth belépést ad a saját alkalmazásodhoz. A Claude-hívás a szerver oldalon fut.
+        </p>
+        <div class="row" id="auth-actions">
+          <a href="/auth/github"><button>Belépés GitHubbal</button></a>
+        </div>
+        <div class="row hidden" id="user-row"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Claude</h2>
+        <p class="muted" id="claude-note">
+          Ha nincs beállítva a Claude API kulcs, a chat rész nem fog válaszolni.
+        </p>
+        <textarea id="prompt" placeholder="Ide írd a kérdést..."></textarea>
+        <div class="row" style="margin-top: 16px;">
+          <button id="send-button">Küldés</button>
+          <button id="logout-button" class="secondary">Kijelentkezés</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Válasz</h2>
+        <pre id="output">Még nincs válasz.</pre>
+      </section>
+    </main>
+
+    <script>
+      const authActions = document.getElementById('auth-actions');
+      const userRow = document.getElementById('user-row');
+      const claudeNote = document.getElementById('claude-note');
+      const output = document.getElementById('output');
+      const promptInput = document.getElementById('prompt');
+      const sendButton = document.getElementById('send-button');
+      const logoutButton = document.getElementById('logout-button');
+
+      async function refreshSession() {
+        const response = await fetch('/api/session');
+        const session = await response.json();
+
+        authActions.classList.toggle('hidden', session.authenticated);
+        userRow.classList.toggle('hidden', !session.authenticated);
+
+        if (session.authenticated) {
+          userRow.innerHTML = `
+            <div class="pill">Bejelentkezve: <strong>${session.user.login}</strong></div>
+            <a class="pill" href="${session.user.profileUrl}" target="_blank" rel="noreferrer">GitHub profil</a>
+          `;
+        } else {
+          userRow.innerHTML = '';
+        }
+
+        claudeNote.textContent = session.claudeReady
+          ? 'A Claude backend készen áll.'
+          : 'A Claude API kulcs hiányzik. A saját app nem tudja közvetlenül használni a személyes Claude Pro webes előfizetést.';
+      }
+
+      sendButton.addEventListener('click', async () => {
+        output.textContent = 'Kérés folyamatban...';
+
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ prompt: promptInput.value })
+        });
+
+        const data = await response.json();
+        output.textContent = data.reply || data.error || 'Ismeretlen hiba.';
+      });
+
+      logoutButton.addEventListener('click', async () => {
+        await fetch('/auth/logout', { method: 'POST' });
+        await refreshSession();
+      });
+
+      refreshSession();
+    </script>
+  </body>
+</html>
