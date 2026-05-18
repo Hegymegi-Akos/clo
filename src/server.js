@@ -3,9 +3,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import Anthropic from '@anthropic-ai/sdk';
+import cookieSession from 'cookie-session';
 import dotenv from 'dotenv';
 import express from 'express';
-import session from 'express-session';
 
 dotenv.config();
 
@@ -24,18 +24,13 @@ const anthropic = process.env.CLAUDE_API_KEY
 app.set('trust proxy', 1);
 app.use(express.json());
 app.use(
-  session({
+  cookieSession({
     name: 'clo.sid',
-    secret: process.env.SESSION_SECRET || 'dev-only-secret-change-me',
-    resave: false,
-    saveUninitialized: false,
-    proxy: isProduction,
-    cookie: {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: isProduction,
-      maxAge: 1000 * 60 * 60 * 24 * 14
-    }
+    keys: [process.env.SESSION_SECRET || 'dev-only-secret-change-me'],
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: isProduction,
+    maxAge: 1000 * 60 * 60 * 24 * 14
   })
 );
 app.use(express.static(publicDir));
@@ -150,9 +145,8 @@ app.get('/auth/github/callback', async (req, res) => {
 });
 
 app.post('/auth/logout', (req, res) => {
-  req.session.destroy(() => {
-    res.json({ ok: true });
-  });
+  req.session = null;
+  res.json({ ok: true });
 });
 
 app.post('/api/chat', requireUser, async (req, res) => {
